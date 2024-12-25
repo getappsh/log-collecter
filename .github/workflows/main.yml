@@ -1,0 +1,72 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+##
+jobs:
+  calculate_new_tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set_tag.outputs.NEW_TAG }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Ensure all tags are fetched
+
+
+      - name: Calculate new tag
+        id: set_tag
+        run: |
+          LAST_TAG=$(git describe --abbrev=0 --tags)
+          export MAJOR=$(echo $LAST_TAG | awk -F'.' '{print $1}')
+          export MINOR=$(echo $LAST_TAG | awk -F'.' '{print $2}')
+          export PATCH=$(echo $LAST_TAG | awk -F'.' '{print $3}')
+          export NEXT_PATCH=$((PATCH + 1))
+          export NEW_TAG="$MAJOR.$MINOR.$NEXT_PATCH"
+          echo "new tag is: $NEW_TAG"
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT          
+          
+  tag_the_commit:
+    needs: calculate_new_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.1
+        with:
+          github_token: ${{ secrets.SECRET_GITHUB_TOKEN }}
+          custom_tag: ${{ needs.calculate_new_tag.outputs.tag }}
+          #custom_tag: 1.0.46.1-even-v2
+          tag_prefix: ""
+
+  build_and_push_image:
+    needs: calculate_new_tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Ensure all tags are fetched
+        
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.getapp.sh
+          username: "${{ secrets.REGISTRY_USERNAME }}"
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build image and push to Docker Hub and GitHub Container Registry
+        uses: docker/build-push-action@v5
+        with:
+          # path to the Dockerfile
+          file: Dockerfile
+          context: .
+          tags: ${{ secrets.REGISTRY_URL }}/getapp-dev/log-collecter:${{ needs.calculate_new_tag.outputs.tag }}
+          push: true
+          build-args: IMG_TAG=${{ needs.calculate_new_tag.outputs.tag }}
+
