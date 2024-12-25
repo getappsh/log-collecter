@@ -42,17 +42,23 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
     """Send logs to Loki."""
     for line in log_lines:
         try:
-            timestamp, message = line.split(" ", 1)
-            
-            # Clean message using json.dumps for proper escaping
-            clean_message = json.dumps(message)[1:-1]
-            
+            # Split and validate timestamp/message
+            parts = line.split(" ", 1)
+            if len(parts) != 2:
+                continue
+            timestamp, message = parts
+
+            # Clean message
+            message = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', message)
+            message = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', message)
+            message = message.replace('\\', '\\\\').replace('"', '\\"').strip()
+
             # Format timestamp
             timestamp = timestamp.rstrip('Z')
-            timestamp_parts = timestamp.split('.')
-            seconds = timestamp_parts[0]
-            nanoseconds = timestamp_parts[1].ljust(9, '0') if len(timestamp_parts) > 1 else "000000000"
-            nanosecond_timestamp = f"{seconds}{nanoseconds}"
+            ts_parts = timestamp.split('.')
+            seconds = ts_parts[0]
+            nanos = (ts_parts[1][:9] + '0' * 9)[:9] if len(ts_parts) > 1 else '000000000'
+            ts_formatted = f"{seconds}{nanos}"
 
             payload = {
                 "streams": [{
@@ -61,21 +67,24 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
                         "pod": pod_name,
                         "container": container_name
                     },
-                    "values": [[nanosecond_timestamp, clean_message]]
+                    "values": [[ts_formatted, message]]
                 }]
             }
+
+            # Validate JSON
+            json.dumps(payload)
 
             response = requests.post(
                 LOKI_URL,
                 headers={"Content-Type": "application/json"},
                 json=payload
             )
-            
+
             if response.status_code != 200:
-                print(f"Error sending to Loki: {response.status_code}, {response.text}")
-                
+                print(f"Failed to send log: {message[:100]}...")
+
         except Exception as e:
-            print(f"Error processing log line: {e}")
+            print(f"Processing error: {str(e)[:100]}")
             continue
 
 def main():
