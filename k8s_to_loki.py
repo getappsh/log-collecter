@@ -37,13 +37,16 @@ def get_pod_logs(v1_api, pod_name, container_name, namespace, since_seconds=None
         print(f"Error fetching logs for {pod_name}/{container_name}: {e}")
         return ""
 
+
 def clean_log_line(line):
-    """Clean the log line using regex to remove color codes and control characters."""
-    # Remove color codes (e.g., \x1b[39m) and control characters
+    """Clean and escape the log line for JSON compatibility."""
+    # Remove control characters and ANSI color codes
     clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
-    clean_line = re.sub(r'[[:cntrl:]]', '', clean_line)
-    clean_line = re.sub(r'"', r'\"', clean_line)
-    clean_line = re.sub(r"'", r"\\'", clean_line)
+    clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
+    # Escape backslashes first
+    clean_line = clean_line.replace('\\', '\\\\')
+    # Escape quotes
+    clean_line = clean_line.replace('"', '\\"')
     return clean_line
 
 def send_logs_to_loki(log_lines, pod_name, container_name):
