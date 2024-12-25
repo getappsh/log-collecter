@@ -41,16 +41,26 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
     streams = []
     for line in log_lines:
         timestamp, message = line.split(" ", 1)
-        # Loki requires nanosecond precision for timestamps
-        nanosecond_timestamp = str(int(time.mktime(time.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ"))) * 1_000_000_000)
-        streams.append({
-            "stream": {
-                "namespace": NAMESPACE,
-                "pod": pod_name,
-                "container": container_name,
-            },
-            "values": [[nanosecond_timestamp, message]],
-        })
+        # Modify the timestamp format to handle nanoseconds
+        try:
+            # Remove 'Z' and split the timestamp into seconds and nanoseconds
+            timestamp = timestamp.rstrip('Z')
+            timestamp_parts = timestamp.split('.')
+            seconds = timestamp_parts[0]
+            nanoseconds = timestamp_parts[1].ljust(9, '0')  # Ensure 9 digits for nanoseconds
+            nanosecond_timestamp = f"{seconds}{nanoseconds}"
+            
+            streams.append({
+                "stream": {
+                    "namespace": NAMESPACE,
+                    "pod": pod_name,
+                    "container": container_name,
+                },
+                "values": [[nanosecond_timestamp, message]],
+            })
+        except Exception as e:
+            print(f"Error processing timestamp: {e}")
+            continue
 
     if streams:
         payload = {"streams": streams}
