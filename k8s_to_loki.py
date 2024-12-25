@@ -38,57 +38,42 @@ def get_pod_logs(v1_api, pod_name, container_name, namespace, since_seconds=None
         return ""
 
 
-def clean_log_line(line):
-    """Clean and escape the log line for JSON compatibility."""
-    # Remove control characters and ANSI color codes
-    clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
-    clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
-    # Escape backslashes first
-    clean_line = clean_line.replace('\\', '\\\\')
-    # Escape quotes
-    clean_line = clean_line.replace('"', '\\"')
-    return clean_line
-
 def send_logs_to_loki(log_lines, pod_name, container_name):
     """Send logs to Loki."""
-    streams = []
     for line in log_lines:
-        timestamp, message = line.split(" ", 1)
         try:
-            # Clean the log line
-            clean_message = clean_log_line(message)
-
-            # Convert the timestamp to nanoseconds (string format)
+            timestamp, message = line.split(" ", 1)
+            
+            # Clean message using json.dumps for proper escaping
+            clean_message = json.dumps(message)[1:-1]
+            
+            # Format timestamp
             timestamp = timestamp.rstrip('Z')
             timestamp_parts = timestamp.split('.')
             seconds = timestamp_parts[0]
-            nanoseconds = timestamp_parts[1].ljust(9, '0')  # Ensure 9 digits for nanoseconds
+            nanoseconds = timestamp_parts[1].ljust(9, '0') if len(timestamp_parts) > 1 else "000000000"
             nanosecond_timestamp = f"{seconds}{nanoseconds}"
 
-            # Create the payload
             payload = {
-                "streams": [
-                    {
-                        "stream": {
-                            "namespace": NAMESPACE,
-                            "pod": pod_name,
-                            "container": container_name,
-                        },
-                        "values": [
-                            [nanosecond_timestamp, clean_message]
-                        ]
-                    }
-                ]
+                "streams": [{
+                    "stream": {
+                        "namespace": NAMESPACE,
+                        "pod": pod_name,
+                        "container": container_name
+                    },
+                    "values": [[nanosecond_timestamp, clean_message]]
+                }]
             }
 
-            # Send the log to Loki
             response = requests.post(
                 LOKI_URL,
                 headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
+                json=payload
             )
-            print(f"Loki response: {response.status_code}, {response.text}")
-
+            
+            if response.status_code != 200:
+                print(f"Error sending to Loki: {response.status_code}, {response.text}")
+                
         except Exception as e:
             print(f"Error processing log line: {e}")
             continue
