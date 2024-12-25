@@ -54,38 +54,50 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
             nanos = (ts_parts[1][:9] + '0' * 9)[:9] if len(ts_parts) > 1 else '000000000'
             ts_formatted = f"{seconds}{nanos}"
 
-            # Clean and escape the message properly
-            message = message.encode('unicode_escape').decode()
-            message = message.replace('"', '\\"')
+            # Clean message
+            clean_message = (
+                message
+                .replace('\\', '\\\\')
+                .replace('"', '\\"')
+                .replace('\n', '\\n')
+                .replace('\r', '\\r')
+                .replace('\t', '\\t')
+            )
+            clean_message = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', clean_message)
 
-            if not message.strip():
+            if not clean_message.strip():
                 continue
 
-            payload = {
-                "streams": [{
-                    "stream": {
-                        "namespace": NAMESPACE,
-                        "pod": pod_name,
-                        "container": container_name
-                    },
-                    "values": [[ts_formatted, message]]
-                }]
+            # Create streams array first
+            stream = {
+                "stream": {
+                    "namespace": NAMESPACE,
+                    "pod": pod_name,
+                    "container": container_name
+                },
+                "values": [[ts_formatted, clean_message]]
             }
+
+            # Build final payload
+            payload = {"streams": [stream]}
+
+            # Convert to JSON string and validate
+            json_payload = json.dumps(payload)
 
             response = requests.post(
                 LOKI_URL,
                 headers={"Content-Type": "application/json"},
-                data=json.dumps(payload, ensure_ascii=True),
+                data=json_payload,
                 timeout=5
             )
 
             if response.status_code != 200:
-                print(f"Error sending log: {message[:50]}")
+                print(f"Failed to send: {clean_message[:50]}")
 
         except Exception as e:
-            print(f"Error: {str(e)[:100]}")
+            print(f"Error: {str(e)}")
             continue
-            
+                        
 def main():
     """Main function."""
     v1_api = get_k8s_client()
