@@ -55,7 +55,7 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
             # Clean the log line
             clean_message = clean_log_line(message)
 
-            # Format the timestamp as %s%N (seconds and nanoseconds)
+            # Convert the timestamp to nanoseconds (string format)
             timestamp = timestamp.rstrip('Z')
             timestamp_parts = timestamp.split('.')
             seconds = timestamp_parts[0]
