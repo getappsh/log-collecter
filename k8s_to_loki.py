@@ -42,16 +42,15 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
     """Send logs to Loki."""
     for line in log_lines:
         try:
-            # Split and validate timestamp/message
             parts = line.split(" ", 1)
             if len(parts) != 2:
                 continue
             timestamp, message = parts
 
-            # Clean message
+            # Basic message cleaning
             message = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', message)
             message = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', message)
-            message = message.replace('\\', '\\\\').replace('"', '\\"').strip()
+            message = message.strip()
 
             # Format timestamp
             timestamp = timestamp.rstrip('Z')
@@ -59,6 +58,10 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
             seconds = ts_parts[0]
             nanos = (ts_parts[1][:9] + '0' * 9)[:9] if len(ts_parts) > 1 else '000000000'
             ts_formatted = f"{seconds}{nanos}"
+
+            # Handle empty messages
+            if not message.strip():
+                continue
 
             payload = {
                 "streams": [{
@@ -71,20 +74,18 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
                 }]
             }
 
-            # Validate JSON
-            json.dumps(payload)
-
             response = requests.post(
                 LOKI_URL,
                 headers={"Content-Type": "application/json"},
-                json=payload
+                json=payload,
+                timeout=5
             )
 
             if response.status_code != 200:
-                print(f"Failed to send log: {message[:100]}...")
+                print(f"Error {response.status_code}: {response.text[:100]}")
 
         except Exception as e:
-            print(f"Processing error: {str(e)[:100]}")
+            print(f"Error: {str(e)[:100]}")
             continue
 
 def main():
