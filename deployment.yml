@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: k8s-to-loki
-          image: <your-docker-registry>/k8s-to-loki:latest
+          image: docker pull harbor.getapp.sh/getapp-dev/log-collecter:0.0.1
           env:
             - name: LOKI_URL
               value: "http://loki.chart-test.svc.cluster.local:3100/loki/api/v1/push"
