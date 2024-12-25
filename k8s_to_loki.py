@@ -97,7 +97,8 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
         except Exception as e:
             print(f"Error: {str(e)}")
             continue
-                        
+            
+                                    
 def main():
     """Main function."""
     v1_api = get_k8s_client()
