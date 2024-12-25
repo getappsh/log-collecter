@@ -23,15 +23,15 @@ def get_k8s_client():
         config.load_kube_config()
     return client.CoreV1Api()
 
-def get_pod_logs(v1_api, pod_name, container_name, namespace, since_time=None):
+def get_pod_logs(v1_api, pod_name, container_name, namespace, since_seconds=None):
     """Fetch logs for a specific container in a pod."""
     try:
         return v1_api.read_namespaced_pod_log(
             name=pod_name,
             namespace=namespace,
             container=container_name,
-            since_time=since_time,
             timestamps=True,
+            since_seconds=since_seconds
         )
     except ApiException as e:
         print(f"Error fetching logs for {pod_name}/{container_name}: {e}")
@@ -101,17 +101,29 @@ def main():
                 pod_name = pod.metadata.name
                 for container in pod.spec.containers:
                     container_name = container.name
-                    since_time = log_positions.get(f"{pod_name}/{container_name}")
-                    logs = get_pod_logs(v1_api, pod_name, container_name, NAMESPACE, since_time)
+
+                    # Determine the last known timestamp for this pod/container
+                    last_timestamp = log_positions.get(f"{pod_name}/{container_name}")
+                    since_seconds = None
+                    if last_timestamp:
+                        last_timestamp_dt = datetime.strptime(last_timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        now_dt = datetime.utcnow()
+                        delta = now_dt - last_timestamp_dt
+                        since_seconds = int(delta.total_seconds())
+
+                    logs = get_pod_logs(v1_api, pod_name, container_name, NAMESPACE, since_seconds)
                     if logs:
                         log_lines = logs.strip().split("\n")
                         send_logs_to_loki(log_lines, pod_name, container_name)
+
                         # Update the last timestamp
                         if log_lines:
                             last_line = log_lines[-1]
                             log_positions[f"{pod_name}/{container_name}"] = last_line.split(" ", 1)[0]
+
         except Exception as e:
             print(f"Error fetching or processing logs: {e}")
+
         print("Sleeping for the next iteration...")
         time.sleep(INTERVAL)
 
