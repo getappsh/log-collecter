@@ -68,38 +68,6 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
                 timeout=5
             )
 
-def send_logs_to_loki(log_lines, pod_name, container_name):
-    for line in log_lines:
-        try:
-            if not line.strip():
-                continue
-                
-            clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
-            clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
-            clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
-
-            payload = {
-                "streams": [{
-                    "stream": {
-                        "namespace": "chart-test",
-                        "pod": pod_name,
-                        "container": container_name
-                    },
-                    "values": [
-                        [str(int(time.time() * 1e9)), clean_line]
-                    ]
-                }]
-            }
-
-            print(f"Sending payload: {json.dumps(payload)[:200]}")  # Debug log
-
-            response = requests.post(
-                LOKI_URL,
-                headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
-                timeout=5
-            )
-
             if response.status_code not in [200, 204]:
                 print(f"Error {response.status_code}: {response.text}")
             elif response.status_code == 204:
@@ -107,8 +75,7 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
 
         except Exception as e:
             print(f"Error: {str(e)}")
-            continue
-
+            continue                        
                                     
 def main():
     """Main function."""
