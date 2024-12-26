@@ -24,12 +24,25 @@ def get_k8s_client():
         config.load_kube_config()
     return client.CoreV1Api()
 
+def parse_timestamp(timestamp_str):
+    """Parse Kubernetes timestamp format with variable precision."""
+    # Remove the trailing Z and handle the variable precision
+    timestamp_str = timestamp_str.rstrip('Z')
+    # Split into seconds and nanoseconds
+    parts = timestamp_str.split('.')
+    if len(parts) == 2:
+        # Pad or truncate nanoseconds to 6 digits for microseconds
+        parts[1] = parts[1][:6].ljust(6, '0')
+        timestamp_str = f"{parts[0]}.{parts[1]}"
+    timestamp_str += 'Z'  # Add back the Z
+    return datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+
 def calculate_seconds_since(timestamp_str):
     """Calculate seconds elapsed since the given timestamp."""
     if not timestamp_str:
         return None
     try:
-        last_time = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        last_time = parse_timestamp(timestamp_str).replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         seconds = int((now - last_time).total_seconds())
         return max(1, seconds)  # Ensure we don't return 0 or negative values
@@ -69,8 +82,8 @@ def send_logs_to_loki(log_lines, pod_name):
             clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
             clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
 
-            # Convert timestamp to nanoseconds for Loki
-            dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+            # Parse timestamp using the new function
+            dt = parse_timestamp(timestamp)
             nano_timestamp = str(int(dt.replace(tzinfo=timezone.utc).timestamp() * 1e9))
 
             payload = {
