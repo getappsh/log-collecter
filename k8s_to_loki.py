@@ -38,45 +38,89 @@ def get_pod_logs(v1_api, pod_name, container_name, namespace, since_seconds=None
         return ""
 
 
-def send_logs_to_loki(log_lines, pod_name, container_name):
-    for line in log_lines:
-        try:
-            if not line.strip():
-                continue
+# def send_logs_to_loki(log_lines, pod_name, container_name):
+#     for line in log_lines:
+#         try:
+#             if not line.strip():
+#                 continue
                 
-            clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
-            clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
-            clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
+#             clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
+#             clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
+#             clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
 
-            payload = {
-                "streams": [{
-                    "stream": {
-                        "namespace": "chart-test",
-                        "pod": pod_name,
-                        "container": container_name
-                    },
-                    "values": [
-                        [str(int(time.time() * 1e9)), clean_line]
-                    ]
-                }]
-            }
+#             payload = {
+#                 "streams": [{
+#                     "stream": {
+#                         "namespace": "chart-test",
+#                         "pod": pod_name,
+#                         "container": container_name
+#                     },
+#                     "values": [
+#                         [str(int(time.time() * 1e9)), clean_line]
+#                     ]
+#                 }]
+#             }
 
-            response = requests.post(
-                LOKI_URL,
-                headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
-                timeout=5
-            )
+#             response = requests.post(
+#                 LOKI_URL,
+#                 headers={"Content-Type": "application/json"},
+#                 data=json.dumps(payload),
+#                 timeout=5
+#             )
 
-            if response.status_code not in [200, 204]:
-                print(f"Error {response.status_code}: {response.text}")
-            elif response.status_code == 204:
-                print(f"Log sent successfully: {clean_line[:50]}...")
+#             if response.status_code not in [200, 204]:
+#                 print(f"Error {response.status_code}: {response.text}")
+#             elif response.status_code == 204:
+#                 print(f"Log sent successfully: {clean_line[:50]}...")
 
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            continue                        
-                                    
+#         except Exception as e:
+#             print(f"Error: {str(e)}")
+#             continue                        
+
+def send_logs_to_loki(log_lines, pod_name, container_name):
+   batch_values = []
+   print(f"Processing {len(log_lines)} log lines for {pod_name}/{container_name}")
+   
+   for line in log_lines:
+       try:
+           if not line.strip():
+               continue
+               
+           clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
+           clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
+           clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
+           
+           batch_values.append([str(int(time.time() * 1e9)), clean_line])
+           
+       except Exception as e:
+           print(f"Error processing line: {str(e)}")
+           continue
+           
+   if batch_values:
+       try:
+           print(f"Sending batch of {len(batch_values)} logs")
+           payload = {
+               "streams": [{
+                   "stream": {
+                       "namespace": "chart-test",
+                       "pod": pod_name,
+                       "container": container_name
+                   },
+                   "values": batch_values
+               }]
+           }
+
+           response = requests.post(
+               LOKI_URL,
+               headers={"Content-Type": "application/json"},
+               data=json.dumps(payload),
+               timeout=5
+           )
+           print(f"Response status: {response.status_code}")
+           
+       except Exception as e:
+           print(f"Error sending batch: {str(e)}")
+
 def main():
     """Main function."""
     v1_api = get_k8s_client()
