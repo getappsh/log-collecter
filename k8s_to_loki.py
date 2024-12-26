@@ -39,65 +39,42 @@ def get_pod_logs(v1_api, pod_name, container_name, namespace, since_seconds=None
 
 
 def send_logs_to_loki(log_lines, pod_name, container_name):
-    """Send logs to Loki."""
     for line in log_lines:
         try:
-            parts = line.split(" ", 1)
-            if len(parts) != 2:
+            if not line.strip():
                 continue
-            timestamp, message = parts
+                
+            clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
+            clean_line = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', clean_line)
+            clean_line = clean_line.replace('"', '\\"').replace("'", "\\'")
 
-            # Format timestamp
-            timestamp = timestamp.rstrip('Z')
-            ts_parts = timestamp.split('.')
-            seconds = ts_parts[0]
-            nanos = (ts_parts[1][:9] + '0' * 9)[:9] if len(ts_parts) > 1 else '000000000'
-            ts_formatted = f"{seconds}{nanos}"
-
-            # Clean message
-            clean_message = (
-                message
-                .replace('\\', '\\\\')
-                .replace('"', '\\"')
-                .replace('\n', '\\n')
-                .replace('\r', '\\r')
-                .replace('\t', '\\t')
-            )
-            clean_message = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', clean_message)
-
-            if not clean_message.strip():
-                continue
-
-            # Create streams array first
-            stream = {
-                "stream": {
-                    "namespace": NAMESPACE,
-                    "pod": pod_name,
-                    "container": container_name
-                },
-                "values": [[ts_formatted, clean_message]]
+            payload = {
+                "streams": [{
+                    "stream": {
+                        "namespace": "chart-test",
+                        "pod": pod_name,
+                        "container": container_name
+                    },
+                    "values": [
+                        [str(int(time.time() * 1e9)), clean_line]
+                    ]
+                }]
             }
-
-            # Build final payload
-            payload = {"streams": [stream]}
-
-            # Convert to JSON string and validate
-            json_payload = json.dumps(payload)
 
             response = requests.post(
                 LOKI_URL,
                 headers={"Content-Type": "application/json"},
-                data=json_payload,
+                data=json.dumps(payload),
                 timeout=5
             )
 
             if response.status_code != 200:
-                print(f"Failed to send: {clean_message[:50]}")
+                print(f"Error {response.status_code}: {response.text}")
 
         except Exception as e:
             print(f"Error: {str(e)}")
             continue
-            
+                        
                                     
 def main():
     """Main function."""
