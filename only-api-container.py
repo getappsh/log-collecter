@@ -7,16 +7,46 @@ from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 from datetime import datetime, timezone
 
-# Configuration
-LOKI_URL = os.getenv("LOKI_URL", "http://loki.chart-test.svc.cluster.local:3100/loki/api/v1/push")
-NAMESPACE = os.getenv("NAMESPACE", "default")
-INTERVAL = int(os.getenv("INTERVAL", 60))  # Interval to fetch logs in seconds
+#----------------------------------------------------------------#
+# set environment variables
+#----------------------------------------------------------------#
+# Get environment variables with validation
+loki_url = os.getenv('LOKI_URL')
+namespace = os.getenv('NAMESPACE')
+interval_str = os.getenv('INTERVAL')
+container_names = os.getenv('CONTAINER_NAMES')
 
-# List of containers to monitor
-CONTAINER_NAMES = ["api", "delivery", "discovery", "offering", "getmap-node"]
+# Validate all required environment variables are set
+if loki_url is None:
+    raise ValueError("LOKI_URL environment variable is not set")
+if namespace is None:
+    raise ValueError("NAMESPACE environment variable is not set")
+if interval_str is None:
+    raise ValueError("INTERVAL environment variable is not set")
+if container_names is None:
+    raise ValueError("CONTAINER_NAMES environment variable is not set.")
+
+# Set the variables after validation
+LOKI_URL = loki_url
+NAMESPACE = namespace
+INTERVAL = int(interval_str)  # Convert to integer after validation
+CONTAINER_NAMES = container_names.split(',')  # Convert comma-separated string to list
+
+#----------------------------------------------------------------#
+# END set environment variables
+#----------------------------------------------------------------#
+
+#----------------------------------------------------------------#
 
 # Track the last log timestamp for each container
 last_timestamps = {}
+
+#----------------------------------------------------------------#
+
+
+#----------------------------------------------------------------#
+# functions 
+#----------------------------------------------------------------#
 
 def get_k8s_client():
     """Initialize Kubernetes API client."""
@@ -111,6 +141,11 @@ def send_logs_to_loki(log_lines, pod_name, container_name):
         except Exception as e:
             print(f"Error processing log for {container_name}: {str(e)}")
             continue
+
+#----------------------------------------------------------------#
+# END functions 
+#----------------------------------------------------------------#
+
 
 def main():
     """Main function."""
