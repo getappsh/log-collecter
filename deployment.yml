@@ -6,7 +6,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: k8s-to-loki
+      app: k8s-to-loki #
   template:
     metadata:
       labels:
