@@ -14,7 +14,9 @@ spec:
     spec:
       containers:
         - name: k8s-to-loki
-          image: docker pull harbor.getapp.sh/getapp-dev/log-collecter:0.0.1
+          image: harbor.getapp.sh/getapp-dev/log-collecter:0.0.2
+          imagePullPolicy: Always
+          serviceaccount: promtail-sa
           env:
             - name: LOKI_URL
               value: "http://loki.chart-test.svc.cluster.local:3100/loki/api/v1/push"
@@ -27,3 +29,5 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
           resources: {}
+      serviceAccountName: promtail-sa
+      serviceAccount: promtail-sa
